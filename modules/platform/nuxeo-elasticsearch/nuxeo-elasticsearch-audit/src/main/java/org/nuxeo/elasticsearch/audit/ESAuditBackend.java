@@ -65,8 +65,8 @@ import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchModule;
+import org.elasticsearch.search.aggregations.Aggregation;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
-import org.elasticsearch.search.aggregations.metrics.max.Max;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortOrder;
 import org.json.JSONException;
@@ -259,7 +259,7 @@ public class ESAuditBackend extends AbstractAuditBackend implements AuditBackend
             // Scroll on next results
             for (; //
             searchResponse.getHits().getHits().length > 0
-                    && logEntries.size() < searchResponse.getHits().getTotalHits(); //
+                            && logEntries.size() < searchResponse.getHits().getTotalHits().value; //
                     searchResponse = runNextScroll(searchResponse.getScrollId(), keepAlive)) {
                 // Build log entries
                 logEntries.addAll(buildLogEntries(searchResponse));
@@ -353,7 +353,7 @@ public class ESAuditBackend extends AbstractAuditBackend implements AuditBackend
     @Override
     public LogEntry getLogEntryByID(long id) {
         GetResponse ret = esClient.get(
-                new GetRequest(getESIndexName(), ElasticSearchConstants.ENTRY_TYPE, String.valueOf(id)));
+                new GetRequest(getESIndexName(), String.valueOf(id)));
         if (!ret.isExists()) {
             return null;
         }
@@ -494,8 +494,8 @@ public class ESAuditBackend extends AbstractAuditBackend implements AuditBackend
                         XContentBuilder builder = jsonBuilder(out)) {
                     ObjectMapper mapper = new ObjectMapper();
                     mapper.writeValue(jg, entry);
-                    bulkRequest.add(new IndexRequest(getESIndexName(), ElasticSearchConstants.ENTRY_TYPE,
-                            String.valueOf(entry.getId())).source(builder));
+                    bulkRequest.add(
+                            new IndexRequest(getESIndexName()).id(String.valueOf(entry.getId())).source(builder));
                 }
             }
 
@@ -521,7 +521,7 @@ public class ESAuditBackend extends AbstractAuditBackend implements AuditBackend
                         new SearchSourceBuilder().query(
                                 QueryBuilders.constantScoreQuery(QueryBuilders.termQuery("eventId", eventId)))
                                                  .size(0)));
-        return res.getHits().getTotalHits();
+        return res.getHits().getTotalHits().value;
     }
 
     @Override
@@ -696,8 +696,8 @@ public class ESAuditBackend extends AbstractAuditBackend implements AuditBackend
 
     protected void logSearchRequest(SearchRequest request) {
         if (log.isDebugEnabled()) {
-            log.debug(String.format("Search query: curl -XGET 'http://localhost:9200/%s/%s/_search?pretty' -d '%s'",
-                    getESIndexName(), ElasticSearchConstants.ENTRY_TYPE, request.toString()));
+            log.debug(String.format("Search query: curl -XGET 'http://localhost:9200/%s/_search?pretty' -d '%s'",
+                    getESIndexName(), request.toString()));
         }
     }
 
@@ -715,9 +715,11 @@ public class ESAuditBackend extends AbstractAuditBackend implements AuditBackend
         request.source(new SearchSourceBuilder().query(QueryBuilders.matchAllQuery())
                                                 .aggregation(AggregationBuilders.max("maxAgg").field("id")));
         SearchResponse searchResponse = esClient.search(request);
-        Max agg = searchResponse.getAggregations().get("maxAgg");
-        long maxLogEntryId = (long) agg.getValue();
-
+        Aggregation agg = searchResponse.getAggregations().get("maxAgg");
+        long maxLogEntryId = 0;
+        if (agg.getMetadata() != null && agg.getMetadata().containsKey(Aggregation.CommonFields.VALUE)) {
+            maxLogEntryId = (long) agg.getMetadata().get(Aggregation.CommonFields.VALUE);
+        }
         // Get next sequence id
         UIDGeneratorService uidGeneratorService = Framework.getService(UIDGeneratorService.class);
         UIDSequencer seq = uidGeneratorService.getSequencer();
@@ -751,7 +753,7 @@ public class ESAuditBackend extends AbstractAuditBackend implements AuditBackend
                 if (StringUtils.isBlank(entryId)) {
                     throw new NuxeoException("A json entry has an empty id. entry=" + json);
                 }
-                IndexRequest request = new IndexRequest(getESIndexName(), ElasticSearchConstants.ENTRY_TYPE, entryId);
+                IndexRequest request = new IndexRequest(getESIndexName()).id(entryId);
                 request.source(json, XContentType.JSON);
                 bulkRequest.add(request);
             } catch (JSONException e) {
