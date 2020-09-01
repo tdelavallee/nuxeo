@@ -131,7 +131,7 @@ public class TestESHintQueryBuilder {
 
     @Test
     public void shouldEnsureEqualityBetweenESGeoQueriesAndESHintGeoQueries() {
-        String[] points = new String[] { "41", "71", "34", "50" };
+        String[] points = new String[] { "41", "34", "50" };
 
         GeoBoundingBoxQueryBuilder geoEsBuilderQuery = QueryBuilders.geoBoundingBoxQuery(ANY_FIELD_NAME)
                                                                     .setCornersOGC(points[0], points[1]);
@@ -140,10 +140,10 @@ public class TestESHintQueryBuilder {
         assertEquals(geoEsBuilderQuery,
                 geoBoundingBoxESHintQueryBuilder.get().make(null, ANY_FIELD_NAME, Arrays.copyOfRange(points, 0, 2)));
 
-        GeoShapeQueryBuilder geoShapeQueryBuilder = QueryBuilders.geoShapeQuery(ANY_FIELD_NAME, points[0], points[1])
+        GeoShapeQueryBuilder geoShapeQueryBuilder = QueryBuilders.geoShapeQuery(ANY_FIELD_NAME, points[0])
                                                                  .relation(ShapeRelation.WITHIN)
-                                                                 .indexedShapeIndex(points[2])
-                                                                 .indexedShapePath(points[3]);
+                                                                 .indexedShapeIndex(points[1])
+                                                                 .indexedShapePath(points[2]);
 
         Optional<ESHintQueryBuilder> geoShapeESHintQueryBuilder = elasticSearchAdmin.getHintByOperator(
                 GeoShapeQueryBuilder.NAME);
@@ -221,7 +221,7 @@ public class TestESHintQueryBuilder {
             geoShapeQueryBuilder.get().make(null, ANY_FIELD_NAME, new String[10]);
             fail("Should raise a NuxeoException");
         } catch (NuxeoException ne) {
-            assertEquals("Hints: GeoShapeESHintQueryBuilder requires 4 parameters: shapeId, type, index and path",
+            assertEquals("Hints: GeoShapeESHintQueryBuilder requires 3 parameters: shapeId, index and path",
                     ne.getMessage());
             assertEquals(SC_BAD_REQUEST, ne.getStatusCode());
         }

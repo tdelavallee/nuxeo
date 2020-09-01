@@ -20,13 +20,12 @@
 
 package org.nuxeo.elasticsearch.core;
 
-import static org.nuxeo.elasticsearch.ElasticSearchConstants.DOC_TYPE;
-
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.lucene.search.TotalHits;
 import org.elasticsearch.action.search.ClearScrollRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
@@ -174,7 +173,7 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
 
     protected DocumentModelListImpl getDocumentModels(NxQueryBuilder queryBuilder, SearchResponse response) {
         DocumentModelListImpl ret;
-        long totalSize = response.getHits().getTotalHits();
+        long totalSize = response.getHits().getTotalHits().value;
         if (!queryBuilder.returnsDocuments() || response.getHits().getHits().length == 0) {
             ret = new DocumentModelListImpl(0);
             ret.setTotalSize(totalSize);
@@ -286,8 +285,8 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
         if (log.isDebugEnabled()) {
             String scroll = request.scroll() != null ? "&scroll=" + request.scroll() : "";
             log.debug(String.format(
-                    "Search query: curl -XGET 'http://localhost:9200/%s/%s/_search?pretty&search_type=%s%s' -d '%s'",
-                    getSearchIndexesAsString(query), DOC_TYPE, searchType.toString().toLowerCase(), scroll,
+                    "Search query: curl -XGET 'http://localhost:9200/%s/_search?pretty&search_type=%s%s' -d '%s'",
+                    getSearchIndexesAsString(query), searchType.toString().toLowerCase(), scroll,
                     request.source().toString()));
         }
     }
