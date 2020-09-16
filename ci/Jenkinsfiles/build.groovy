@@ -177,9 +177,7 @@ def rolloutStatusPostgreSQL(namespace) {
 }
 
 def rolloutStatusElasticsearch(namespace) {
-  rolloutStatus('statefulset', "${TEST_ELASTICSEARCH_DATA_K8S_OBJECT}", "${TEST_LONG_ROLLOUT_STATUS_TIMEOUT}", namespace)
-  rolloutStatus('statefulset', "${TEST_ELASTICSEARCH_MASTER_K8S_OBJECT}", "${TEST_LONG_ROLLOUT_STATUS_TIMEOUT}", namespace)
-  rolloutStatus('deployment', "${TEST_ELASTICSEARCH_CLIENT_K8S_OBJECT}", "${TEST_LONG_ROLLOUT_STATUS_TIMEOUT}", namespace)
+  rolloutStatus('statefulset', "${TEST_ELASTICSEARCH_K8S_OBJECT}", "${TEST_LONG_ROLLOUT_STATUS_TIMEOUT}", namespace)
 }
 
 def rolloutStatusKafka(namespace) {
@@ -207,6 +205,7 @@ def buildUnitTestStage(env) {
               // initialize Helm without Tiller and add local repository
               sh """
                 helm init --client-only
+                helm repo add elastic https://helm.elastic.co/
                 helm repo add ${HELM_CHART_REPOSITORY_NAME} ${HELM_CHART_REPOSITORY_URL}
               """
               // prepare values to disable nuxeo and activate external services in the nuxeo Helm chart
@@ -221,6 +220,7 @@ def buildUnitTestStage(env) {
                 jx step helm install ${HELM_CHART_REPOSITORY_NAME}/${HELM_CHART_NUXEO} \
                   --name=${TEST_HELM_CHART_RELEASE} \
                   --namespace=${testNamespace} \
+                  --version=1.1-PR-22-18 \
                   ${testValues}
               """
               // wait for external services to be ready
@@ -329,9 +329,7 @@ pipeline {
     TEST_REDIS_K8S_OBJECT = "${TEST_HELM_CHART_RELEASE}-redis-master"
     TEST_MONGODB_K8S_OBJECT = "${TEST_HELM_CHART_RELEASE}-mongodb"
     TEST_POSTGRESQL_K8S_OBJECT = "${TEST_HELM_CHART_RELEASE}-postgresql"
-    TEST_ELASTICSEARCH_DATA_K8S_OBJECT = "${TEST_HELM_CHART_RELEASE}-elasticsearch-data"
-    TEST_ELASTICSEARCH_MASTER_K8S_OBJECT = "${TEST_HELM_CHART_RELEASE}-elasticsearch-master"
-    TEST_ELASTICSEARCH_CLIENT_K8S_OBJECT = "${TEST_HELM_CHART_RELEASE}-elasticsearch-client"
+    TEST_ELASTICSEARCH_K8S_OBJECT = "elasticsearch-master"
     TEST_KAFKA_K8S_OBJECT = "${TEST_HELM_CHART_RELEASE}-kafka"
     TEST_KAFKA_PORT = '9092'
     TEST_KAFKA_POD_NAME = "${TEST_KAFKA_K8S_OBJECT}-0"
@@ -458,76 +456,76 @@ pipeline {
       }
     }
 
-    stage('Run runtime unit tests') {
-      steps {
-        container('maven') {
-          script {
-            setGitHubBuildStatus('utests/runtime', 'Unit tests - runtime', 'PENDING')
-            def testNamespace = "${TEST_NAMESPACE_PREFIX}-runtime"
-            def redisHost = "${TEST_REDIS_K8S_OBJECT}.${testNamespace}.${TEST_SERVICE_DOMAIN_SUFFIX}"
-            def kafkaHost = "${TEST_KAFKA_K8S_OBJECT}.${testNamespace}.${TEST_SERVICE_DOMAIN_SUFFIX}:${TEST_KAFKA_PORT}"
-            try {
-              echo """
-              ----------------------------------------
-              Run runtime unit tests
-              ----------------------------------------"""
-
-              echo "runtime unit tests: install external services"
-              // initialize Helm without Tiller and add local repository
-              sh """
-                helm init --client-only
-                helm repo add ${HELM_CHART_REPOSITORY_NAME} ${HELM_CHART_REPOSITORY_URL}
-              """
-              // install the nuxeo Helm chart into a dedicated namespace that will be cleaned up afterwards
-              sh """
-                jx step helm install ${HELM_CHART_REPOSITORY_NAME}/${HELM_CHART_NUXEO} \
-                  --name=${TEST_HELM_CHART_RELEASE} \
-                  --namespace=${testNamespace} \
-                  --set-file=ci/helm/nuxeo-test-base-values.yaml~gen \
-                  --set-file=ci/helm/nuxeo-test-kafka-values.yaml~gen
-              """
-              // wait for external services to be ready
-              rolloutStatusRedis(testNamespace)
-              rolloutStatusKafka(testNamespace)
-
-              echo "runtime unit tests: run Maven"
-              // run unit tests
-              dir('modules/runtime') {
-                retry(2) {
-                  sh """
-                    mvn ${MAVEN_ARGS} ${MAVEN_FAIL_ARGS} \
-                      -Dnuxeo.test.redis.host=${redisHost} \
-                      -Pkafka -Dkafka.bootstrap.servers=${kafkaHost} \
-                      test
-                  """
-                }
-              }
-
-              setGitHubBuildStatus('utests/runtime', 'Unit tests - runtime', 'SUCCESS')
-            } catch(err) {
-              echo "runtime unit tests error: ${err}"
-              setGitHubBuildStatus('utests/runtime', 'Unit tests - runtime', 'FAILURE')
-              throw err
-            } finally {
-              try {
-                junit testResults: "**/target/surefire-reports/*.xml"
-                archiveKafkaLogs(testNamespace, 'runtime-kafka.log')
-              } finally {
-                echo "runtime unit tests: clean up test namespace"
-                // uninstall the nuxeo Helm chart
-                sh """
-                  jx step helm delete ${TEST_HELM_CHART_RELEASE} \
-                    --namespace=${testNamespace} \
-                    --purge
-                """
-                // clean up the test namespace
-                sh "kubectl delete namespace ${testNamespace} --ignore-not-found=true"
-              }
-            }
-          }
-        }
-      }
-    }
+//     stage('Run runtime unit tests') {
+//       steps {
+//         container('maven') {
+//           script {
+//             setGitHubBuildStatus('utests/runtime', 'Unit tests - runtime', 'PENDING')
+//             def testNamespace = "${TEST_NAMESPACE_PREFIX}-runtime"
+//             def redisHost = "${TEST_REDIS_K8S_OBJECT}.${testNamespace}.${TEST_SERVICE_DOMAIN_SUFFIX}"
+//             def kafkaHost = "${TEST_KAFKA_K8S_OBJECT}.${testNamespace}.${TEST_SERVICE_DOMAIN_SUFFIX}:${TEST_KAFKA_PORT}"
+//             try {
+//               echo """
+//               ----------------------------------------
+//               Run runtime unit tests
+//               ----------------------------------------"""
+//
+//               echo "runtime unit tests: install external services"
+//               // initialize Helm without Tiller and add local repository
+//               sh """
+//                 helm init --client-only
+//                 helm repo add ${HELM_CHART_REPOSITORY_NAME} ${HELM_CHART_REPOSITORY_URL}
+//               """
+//               // install the nuxeo Helm chart into a dedicated namespace that will be cleaned up afterwards
+//               sh """
+//                 jx step helm install ${HELM_CHART_REPOSITORY_NAME}/${HELM_CHART_NUXEO} \
+//                   --name=${TEST_HELM_CHART_RELEASE} \
+//                   --namespace=${testNamespace} \
+//                   --set-file=ci/helm/nuxeo-test-base-values.yaml~gen \
+//                   --set-file=ci/helm/nuxeo-test-kafka-values.yaml~gen
+//               """
+//               // wait for external services to be ready
+//               rolloutStatusRedis(testNamespace)
+//               rolloutStatusKafka(testNamespace)
+//
+//               echo "runtime unit tests: run Maven"
+//               // run unit tests
+//               dir('modules/runtime') {
+//                 retry(2) {
+//                   sh """
+//                     mvn ${MAVEN_ARGS} ${MAVEN_FAIL_ARGS} \
+//                       -Dnuxeo.test.redis.host=${redisHost} \
+//                       -Pkafka -Dkafka.bootstrap.servers=${kafkaHost} \
+//                       test
+//                   """
+//                 }
+//               }
+//
+//               setGitHubBuildStatus('utests/runtime', 'Unit tests - runtime', 'SUCCESS')
+//             } catch(err) {
+//               echo "runtime unit tests error: ${err}"
+//               setGitHubBuildStatus('utests/runtime', 'Unit tests - runtime', 'FAILURE')
+//               throw err
+//             } finally {
+//               try {
+//                 junit testResults: "**/target/surefire-reports/*.xml"
+//                 archiveKafkaLogs(testNamespace, 'runtime-kafka.log')
+//               } finally {
+//                 echo "runtime unit tests: clean up test namespace"
+//                 // uninstall the nuxeo Helm chart
+//                 sh """
+//                   jx step helm delete ${TEST_HELM_CHART_RELEASE} \
+//                     --namespace=${testNamespace} \
+//                     --purge
+//                 """
+//                 // clean up the test namespace
+//                 sh "kubectl delete namespace ${testNamespace} --ignore-not-found=true"
+//               }
+//             }
+//           }
+//         }
+//       }
+//     }
 
     stage('Run unit tests') {
       steps {
