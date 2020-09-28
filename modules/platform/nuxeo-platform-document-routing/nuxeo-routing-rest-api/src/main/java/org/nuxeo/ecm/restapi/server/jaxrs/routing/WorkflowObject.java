@@ -67,12 +67,17 @@ public class WorkflowObject extends DefaultObject {
 
     @POST
     public Response createWorkflowInstance(WorkflowRequest workflowRequest) {
-        final String workflowInstanceId = documentRoutingService.createNewInstance(
-                workflowRequest.getWorkflowModelName(), workflowRequest.getAttachedDocumentIds(),
-                workflowRequest.getVariables(), ctx.getCoreSession(), true);
-        DocumentModel workflowInstance = getContext().getCoreSession().getDocument(new IdRef(workflowInstanceId));
-        DocumentRoute route = workflowInstance.getAdapter(DocumentRoute.class);
-        return Response.ok(route).status(Status.CREATED).build();
+        if (documentRoutingService.canCreateInstance(ctx.getCoreSession(), workflowRequest.getAttachedDocumentIds(),
+                workflowRequest.getWorkflowModelName())) {
+            final String workflowInstanceId = documentRoutingService.createNewInstance(
+                    workflowRequest.getWorkflowModelName(), workflowRequest.getAttachedDocumentIds(),
+                    workflowRequest.getVariables(), ctx.getCoreSession(), true);
+            DocumentModel workflowInstance = getContext().getCoreSession().getDocument(new IdRef(workflowInstanceId));
+            DocumentRoute route = workflowInstance.getAdapter(DocumentRoute.class);
+            return Response.ok(route).status(Status.CREATED).build();
+        } else {
+            return Response.status(Status.FORBIDDEN).build();
+        }
     }
 
     @GET

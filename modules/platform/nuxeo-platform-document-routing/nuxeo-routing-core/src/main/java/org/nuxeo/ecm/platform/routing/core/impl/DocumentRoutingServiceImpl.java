@@ -36,6 +36,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -67,6 +68,9 @@ import org.nuxeo.ecm.core.event.EventProducer;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
 import org.nuxeo.ecm.core.query.sql.NXQL;
 import org.nuxeo.ecm.core.repository.RepositoryInitializationHandler;
+import org.nuxeo.ecm.platform.actions.ActionContext;
+import org.nuxeo.ecm.platform.actions.ELActionContext;
+import org.nuxeo.ecm.platform.actions.ejb.ActionManager;
 import org.nuxeo.ecm.platform.filemanager.api.FileImporterContext;
 import org.nuxeo.ecm.platform.filemanager.api.FileManager;
 import org.nuxeo.ecm.platform.query.api.PageProvider;
@@ -1387,5 +1391,50 @@ public class DocumentRoutingServiceImpl extends DefaultComponent implements Docu
     @Override
     public boolean isWorkflowModel(final DocumentRoute documentRoute) {
         return documentRoute.isValidated();
+    }
+
+    /**
+     * @since 11.3
+     */
+    @Override
+    public boolean canCreateInstance(CoreSession session, List<String> documentIds, String workflowModelName) {
+
+        DocumentModelList docs = session.getDocuments(documentIds.stream().map(IdRef::new).toArray(DocumentRef[]::new));
+
+        DocumentRoute routeModel = getRouteModelWithId(session, workflowModelName);
+
+        if (routeModel == null) {
+            throw new IllegalArgumentException(workflowModelName + " is not a valid workflow name");
+        }
+
+        GraphRoute graphRouteObj = routeModel.getDocument().getAdapter(GraphRoute.class);
+        String filter = graphRouteObj.getAvailabilityFilter();
+
+        ActionManager actionManager = Framework.getService(ActionManager.class);
+
+        return docs.stream().allMatch(doc -> {
+            ActionContext actionContext = new ELActionContext();
+            actionContext.setCurrentDocument(doc);
+            actionContext.setDocumentManager(session);
+            actionContext.setCurrentPrincipal(session.getPrincipal());
+            if (StringUtils.isBlank(filter)
+                    || (!StringUtils.isBlank(filter) && actionManager.checkFilter(filter, actionContext))) {
+                return true;
+            } else {
+                return false;
+            }
+        });
+    }
+
+    /**
+     * @since 11.3
+     */
+    @Override
+    public List<DocumentRoute> getRunnableWorkflows(CoreSession session, List<String> documentIds) {
+        List<DocumentModel> routeModels = searchRouteModels(session, "");
+        return routeModels.stream()
+                          .filter(route -> !canCreateInstance(session, documentIds, route.getName()))
+                          .map(document -> document.getAdapter(DocumentRoute.class))
+                          .collect(Collectors.toList());
     }
 }

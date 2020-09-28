@@ -51,27 +51,32 @@ public class WorkflowAdapter extends DefaultAdapter {
     @POST
     public Response doPost(WorkflowRequest routingRequest) {
         DocumentModel doc = getTarget().getAdapter(DocumentModel.class);
-        final String workflowInstanceId = Framework.getService(DocumentRoutingService.class).createNewInstance(
-                routingRequest.getWorkflowModelName(), Arrays.asList(new String[] { doc.getId() }), ctx.getCoreSession(),
-                true);
-        DocumentModel result = getContext().getCoreSession().getDocument(new IdRef(workflowInstanceId));
-        DocumentRoute route = result.getAdapter(DocumentRoute.class);
-        return Response.ok(route).status(Status.CREATED).build();
+        DocumentRoutingService documentRoutingService = Framework.getService(DocumentRoutingService.class);
+        if (documentRoutingService.canCreateInstance(doc.getCoreSession(), Arrays.asList(doc.getId()),
+                routingRequest.getWorkflowModelName())) {
+            final String workflowInstanceId = documentRoutingService.createNewInstance(
+                    routingRequest.getWorkflowModelName(), Arrays.asList(doc.getId()), ctx.getCoreSession(), true);
+            DocumentModel result = getContext().getCoreSession().getDocument(new IdRef(workflowInstanceId));
+            DocumentRoute route = result.getAdapter(DocumentRoute.class);
+            return Response.ok(route).status(Status.CREATED).build();
+        } else {
+            return Response.status(Status.FORBIDDEN).build();
+        }
     }
 
     @GET
     public List<DocumentRoute> doGet() {
         DocumentModel doc = getTarget().getAdapter(DocumentModel.class);
-        return Framework.getService(DocumentRoutingService.class).getDocumentRelatedWorkflows(doc,
-                getContext().getCoreSession());
+        return Framework.getService(DocumentRoutingService.class)
+                        .getDocumentRelatedWorkflows(doc, getContext().getCoreSession());
     }
 
     @GET
     @Path("{workflowInstanceId}/task")
     public List<Task> doGetTasks(@PathParam("workflowInstanceId") String workflowInstanceId) {
         DocumentModel doc = getTarget().getAdapter(DocumentModel.class);
-        return Framework.getService(DocumentRoutingService.class).getTasks(doc,
-                null , workflowInstanceId, null, getContext().getCoreSession());
+        return Framework.getService(DocumentRoutingService.class)
+                        .getTasks(doc, null, workflowInstanceId, null, getContext().getCoreSession());
     }
 
 }
