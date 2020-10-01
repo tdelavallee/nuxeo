@@ -40,6 +40,9 @@ public class UserLocaleSelectorListener implements EventListener {
 
     @Override
     public void handleEvent(Event event) {
+    	if (!(event.getContext() instanceof DocumentEventContext)) {
+            return;
+        }
         DocumentEventContext ctx = (DocumentEventContext) event.getContext();
         DocumentModel userProfileDocument = ctx.getSourceDocument();
 
